@@ -1,3 +1,5 @@
+# From: https://github.com/nvelden/sql_table
+
 library(shiny)
 library(DT)
 library(RSQLite)
@@ -7,16 +9,10 @@ library(uuid)
 library(dplyr)
 
 #Create sql lite database
-pool <- dbPool(RSQLite::SQLite(), dbname = "db.sqlite")
+pool <- dbPool(RSQLite::SQLite(), dbname = "data/DwC.sqlite")
 
 #Create sql lite df
-responses_df <- data.frame(row_id = character(),
-                           name = character(),
-                           sex = character(),
-                           age = character(), 
-                           comment = character(),
-                           date = as.Date(character()),
-                           stringsAsFactors = FALSE)
+responses_df <- DwC_events
 
 #Create responses table in sql database
 dbWriteTable(pool, "responses_df", responses_df, overwrite = FALSE, append = TRUE)
@@ -64,7 +60,7 @@ responses_df <- reactive({
 })  
 
 #List of mandatory fields for submission
-fieldsMandatory <- c("name", "sex")
+fieldsMandatory <- names(DwC_events)[names(DwC_events)!="row_id"]
 
 #define which input fields are mandatory 
 observe({
@@ -93,11 +89,11 @@ entry_form <- function(button_id){
               splitLayout(
                 cellWidths = c("250px", "100px"),
                 cellArgs = list(style = "vertical-align: top"),
-                textInput("name", labelMandatory("Name"), placeholder = ""),
-                selectInput("sex", labelMandatory("Sex"), multiple = FALSE, choices = c("", "M", "F"))
+                textInput("name", labelMandatory("name"), placeholder = ""),
+                #selectInput("sex", labelMandatory("Sex"), multiple = FALSE, choices = c("", "M", "F"))
               ),
-              sliderInput("age", "Age", 0, 100, 1, ticks = TRUE, width = "354px"),
-              textAreaInput("comment", "Comment", placeholder = "", height = 100, width = "354px"),
+              #sliderInput("age", "Age", 0, 100, 1, ticks = TRUE, width = "354px"),
+              textAreaInput("description", "description", placeholder = "", height = 100, width = "354px"),
               helpText(labelMandatory(""), paste("Mandatory field.")),
               actionButton(button_id, "Submit")
             ),
@@ -109,17 +105,15 @@ entry_form <- function(button_id){
 }
 
 #
-fieldsAll <- c("name", "sex", "age", "comment")
+fieldsAll <-names(DwC_events)[names(DwC_events)!="row_id"]
 
 #save form data into data_frame format
 formData <- reactive({
   
-  formData <- data.frame(row_id = UUIDgenerate(),
+  formData <- data.frame(row_id = uuid::UUIDgenerate(),
                          name = input$name,
-                         sex = input$sex,
-                         age = input$age, 
-                         comment = input$comment,
-                         date = as.character(format(Sys.Date(), format="%d-%m-%Y")),
+                         description = input$description,
+                         #date = as.character(format(Sys.Date(), format="%d-%m-%Y")),
                          stringsAsFactors = FALSE)
   return(formData)
   
@@ -228,9 +222,9 @@ observeEvent(input$edit_button, priority = 20,{
     entry_form("submit_edit")
     
     updateTextInput(session, "name", value = SQL_df[input$responses_table_rows_selected, "name"])
-    updateSelectInput(session, "sex", selected = SQL_df[input$responses_table_rows_selected, "sex"])
-    updateSliderInput(session, "age", value = SQL_df[input$responses_table_rows_selected, "age"])
-    updateTextAreaInput(session, "comment", value = SQL_df[input$responses_table_rows_selected, "comment"])
+    #updateSelectInput(session, "sex", selected = SQL_df[input$responses_table_rows_selected, "description"])
+    #updateSliderInput(session, "age", value = SQL_df[input$responses_table_rows_selected, "age"])
+    updateTextAreaInput(session, "description", value = SQL_df[input$responses_table_rows_selected, "description"])
 
   }
   
@@ -240,12 +234,11 @@ observeEvent(input$submit_edit, priority = 20, {
   
   SQL_df <- dbReadTable(pool, "responses_df")
   row_selection <- SQL_df[input$responses_table_row_last_clicked, "row_id"] 
-  dbExecute(pool, sprintf('UPDATE "responses_df" SET "name" = ?, "sex" = ?, "age" = ?,
-                          "comment" = ? WHERE "row_id" = ("%s")', row_selection), 
+  dbExecute(pool, sprintf('UPDATE "responses_df" SET "name" = ?, "comment" = ? WHERE "row_id" = ("%s")', row_selection), 
             param = list(input$name,
-                         input$sex,
-                         input$age,
-                         input$comment))
+                         #input$sex,
+                         #input$age,
+                         input$description))
   removeModal()
 
 })
@@ -254,7 +247,7 @@ observeEvent(input$submit_edit, priority = 20, {
 output$responses_table <- DT::renderDataTable({
   
   table <- responses_df() %>% select(-row_id) 
-  names(table) <- c("Date", "Name", "Sex", "Age", "Comment")
+  names(table) <- names(DwC_events)[names(DwC_events)!="row_id"]
   table <- datatable(table, 
                      rownames = FALSE,
                      options = list(searching = FALSE, lengthChange = FALSE)
